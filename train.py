@@ -38,6 +38,7 @@ NETWORK_UPDATE_FREQ = 4
 NETWORK_SAVE_FREQ = 100
 NETWORK_EVALUATE_FREQ = 100
 N_VAL_EPISODES = 10
+OPTION_LEN = 50
 META_BURN_IN_EP = 0
 
 env = gym.make("MsPacman-v0")
@@ -48,7 +49,7 @@ hdqn = HDQN(
     device = device, 
     checkpoint_path = CHECKPOINT_FOLDERNAME
 )
-agent = HDQN_agent(env, hdqn, D, epsilon=EPSILON)
+agent = HDQN_agent(env, hdqn, D, epsilon=EPSILON, option_len=OPTION_LEN)
 agent.train(
     gamma=GAMMA,
     max_episodes=MAX_EPISODES,
