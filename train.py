@@ -25,11 +25,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Running on", device)
 
 CHECKPOINT_FOLDERNAME = "checkpoints/"
-LEARNING_RATE = 2.5e-8
-EPSILON = 0.1
+CHECKPOINT_PREFIX="hdqn"
+MEMORY_SIZE = 1e6 
+BURN_IN = 1e5
+LEARNING_RATE = 2.5e-6
+GAMMA = 0.99
 MAX_EPISODES = 5000
-NETWORK_EVALUATE_FREQ = 100
+EPSILON = 0.25
+# INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_FRAME=1e6
+NETWORK_SYNC_FREQ = 10000
+NETWORK_UPDATE_FREQ = 4
 NETWORK_SAVE_FREQ = 100
+NETWORK_EVALUATE_FREQ = 100
 N_VAL_EPISODES = 10
 META_BURN_IN_EP = 0
 
@@ -43,10 +50,14 @@ hdqn = HDQN(
 )
 agent = HDQN_agent(env, hdqn, D, epsilon=EPSILON)
 agent.train(
-    max_episodes=MAX_EPISODES, 
+    gamma=GAMMA,
+    max_episodes=MAX_EPISODES,
+    network_update_frequency = NETWORK_UPDATE_FREQ,
+    network_sync_frequency = NETWORK_SYNC_FREQ,
+    network_save_frequency = NETWORK_SAVE_FREQ,
     network_evaluate_frequency=NETWORK_EVALUATE_FREQ,
     n_val_episodes=N_VAL_EPISODES,
-    meta_burn_in_ep=META_BURN_IN_EP, 
-    network_save_frequency=NETWORK_SAVE_FREQ, 
-    checkpoint_path=CHECKPOINT_FOLDERNAME
+    checkpoint_path = CHECKPOINT_FOLDERNAME,
+    checkpoint_prefix = CHECKPOINT_PREFIX,
+    meta_burn_in_ep=META_BURN_IN_EP
 )
