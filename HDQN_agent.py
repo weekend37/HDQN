@@ -41,9 +41,7 @@ class HDQN_agent:
         self.meta_state = np.stack([deepcopy(self.state_buffer)])
         self.meta_rewards = 0
         self.meta_buffer = buffer
-        self.option_buffers = {}
-        for i in range(self.network.n_options):
-            self.option_buffers[i] = deepcopy(self.meta_buffer)
+        self.option_buffer = deepcopy(buffer)
         self.meta_buffer.burn_in = batch_size
 
         # analysis
@@ -61,14 +59,12 @@ class HDQN_agent:
             action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
             self.step_count += 1
         s_1_raw, r_raw, done, _ = self.env.step(action)
-        r = self.filter_reward(r_raw, done, network="options")
         s_1 = preprocess(s_1_raw)
         self.rewards += r_raw
         self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
         self.state_buffer.append(self.s_0.copy())
         self.next_state_buffer.append(s_1.copy())
-        self.option_buffers[self.network.current_option].append(
-            deepcopy(self.state_buffer), action, r, done, deepcopy(self.next_state_buffer))
+        self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
 
         self.s_0 = s_1.copy()
         return done
@@ -103,6 +99,8 @@ class HDQN_agent:
             self.train_ep_option_dist[next_option] += 1
         else:
             self.eval_option_dist[next_option] += 1
+        
+        return next_option
 
     # HDQN training 
     def train(self, gamma=0.99, max_episodes=10000, batch_size=32,
@@ -125,19 +123,14 @@ class HDQN_agent:
 
         # Populate the replay buffer
         print("Populating replay buffer...")
-        for b in range(len(self.option_buffers)):
-            while self.option_buffers[b].burn_in_capacity() < 1:
-                self.network.current_option = b
-                done = self.take_step(mode='train')
-                if done:
-                    self.s_0 = preprocess(self.env.reset())
-
-        # Populate replay buffer for meta controller
-        print("Populating replay buffer for meta controller")
-        while self.meta_buffer.burn_in_capacity() < 1:
-            done = self.take_option(mode='explore')
+        p_step = 0
+        while self.option_buffer.burn_in_capacity() < 1 or self.meta_buffer.burn_in_capacity() < 1:
+            if p_step % self.option_len == 0:
+                self.take_option(mode="explore")
+            done = self.take_step(mode='explore')
             if done:
                 self.s_0 = preprocess(self.env.reset())
+            p_step += 1
 
         # Start learning
         print("Beginning training...")
@@ -209,26 +202,29 @@ class HDQN_agent:
                     self.plot_results()
                 return
                 
-    def calculate_options_loss(self, batch):
+    def calculate_options_loss(self, batch, option):
         dev = self.network.device
         states, actions, rewards, dones, next_states = [i for i in batch]
+
+        # filter rewards based on option head
+        rewards = [self.filter_reward(rewards[i],dones[i],"options",option) for i in range(self.batch_size)]
+
         rewards_t = torch.FloatTensor(rewards).to(device=dev)
         actions_t = torch.LongTensor(np.array(actions)).reshape(-1,1).to(device=dev)
         dones_t = torch.ByteTensor(dones).to(dtype=torch.bool).to(device=dev)
 
         q_vals_raw = self.network.get_qvals(states)
-        qvals = torch.gather(q_vals_raw, 1, actions_t) #.squeeze()
+        qvals = torch.gather(q_vals_raw, 1, actions_t)
         q_vals_next_raw = self.target_network.get_qvals(next_states)
         qvals_next = torch.max(q_vals_next_raw, dim=-1)[0].detach()
         qvals_next[dones_t] = 0 # Zero-out terminal states
-        expected_qvals = self.gamma * qvals_next + rewards_t
-        loss = nn.MSELoss()(qvals, expected_qvals.reshape(-1,1))
+        expected_qvals = (self.gamma * qvals_next + rewards_t).reshape(-1,1)
+        loss = nn.MSELoss()(qvals, expected_qvals)
         return loss
 
     def calculate_meta_loss(self, batch):
         dev = self.network.device
         states, options, rewards, dones, next_states = [i for i in batch]
-        
         states = np.stack(states).squeeze()
         next_states = np.stack(next_states).squeeze()
 
@@ -237,12 +233,12 @@ class HDQN_agent:
         dones_t = torch.ByteTensor(dones).to(dtype=torch.bool).to(device=dev)
 
         o_vals_raw = self.network.get_ovals(states)
-        ovals = torch.gather(o_vals_raw, 1, options_t) #.squeeze()
+        ovals = torch.gather(o_vals_raw, 1, options_t)
         o_vals_next_raw = self.target_network.get_ovals(next_states)
         ovals_next = torch.max(o_vals_next_raw, dim=-1)[0].detach()
         ovals_next[dones_t] = 0 # Zero-out terminal states
-        expected_ovals = self.gamma * ovals_next + rewards_t
-        loss = nn.MSELoss()(ovals, expected_ovals.reshape(-1,1))
+        expected_ovals = (self.gamma * ovals_next + rewards_t).reshape(-1,1)
+        loss = nn.MSELoss()(ovals, expected_ovals)
         return loss
 
     def update(self, network="options"):
@@ -260,8 +256,8 @@ class HDQN_agent:
                 self.losses['meta'].append(loss.detach().numpy())
         elif network == "options":
             for i in range(self.network.n_options):
-                batch = self.option_buffers[i].sample_batch(batch_size=self.batch_size)
-                loss = self.calculate_options_loss(batch)
+                batch = self.option_buffer.sample_batch(batch_size=self.batch_size)
+                loss = self.calculate_options_loss(batch, option=i)
                 # loss /= self.network.n_options # take average between options
                 loss.backward()
                 if self.network.device == 'cuda':
@@ -278,9 +274,10 @@ class HDQN_agent:
             rewards.append(r)
         self.mean_validation_rewards[int(eps)] = np.mean(np.array(rewards))
 
-    def filter_reward(self, r, done, network):
+    def filter_reward(self, r, done, network, opt=None):
         if network == "options":
-            opt = self.network.current_option
+            if opt is None:
+                opt = self.network.current_option
             if (opt == 0) or (opt == 1 and r != 10) or (opt == 2 and r != 50) or (opt==3 and r <= 50):
                 r = 0
             if opt == 0:

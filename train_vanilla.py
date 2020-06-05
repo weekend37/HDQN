@@ -26,7 +26,7 @@ print("Running on", device)
 
 CHECKPOINT_FOLDERNAME = "checkpoints/"
 CHECKPOINT_PREFIX="vanilla_dqn"
-MEMORY_SIZE = 1e6 
+MEMORY_SIZE = 1e4
 BURN_IN = 1e5
 LEARNING_RATE = 2.5e-4
 GAMMA = 0.99
