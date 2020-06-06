@@ -25,6 +25,7 @@ class HDQN_2head(nn.Module):
         self.learning_rate = learning_rate
         self.actions = np.arange(env.action_space.n)
         self.n_outputs = env.action_space.n
+        self.clip_val = 10
         # HDQN
         self.n_options = 4
         self.current_option = 0

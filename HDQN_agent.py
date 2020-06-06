@@ -13,7 +13,7 @@ import torch.optim as optim
 import pickle 
 
 class HDQN_agent:
-    def __init__(self, env, network, buffer, epsilon=0.25, batch_size=32, option_len=50):
+    def __init__(self, env, network, buffer, epsilon=0.25, batch_size=32, option_len=10):
         # config
         self.env = env
         self.epsilon = epsilon
@@ -134,7 +134,7 @@ class HDQN_agent:
               n_val_episodes=10, start_from_eps=0, checkpoint_path=None, 
               checkpoint_prefix="hdqn", plot_result=False, 
               epsilon_start=None, epsilon_end=None, epsilon_final_episode=None,
-              op_ratio_n_bins=50, meta_burn_in_ep=0,):
+              op_ratio_n_bins=50, meta_burn_in_ep=0):
         self.checkpoint_path = checkpoint_path
         self.checkpoint_prefix = checkpoint_prefix
         self.gamma = gamma
