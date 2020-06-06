@@ -19,6 +19,7 @@ class DQN(nn.Module):
         self.learning_rate = learning_rate
         self.actions = np.arange(env.action_space.n)
         self.n_outputs = env.action_space.n
+        self.clip_val = 10
 
         # CNN modeled off of Mnih et al.
         self.cnn = nn.Sequential(

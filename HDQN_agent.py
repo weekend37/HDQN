@@ -19,6 +19,7 @@ class HDQN_agent:
         self.epsilon = epsilon
         self.batch_size = batch_size
         self.window = 100
+        self.skip_frames = 4
         # network
         self.network = network
         self.target_network = deepcopy(network)
@@ -51,22 +52,46 @@ class HDQN_agent:
             self.train_ep_option_ratio[o] = {}
         self.eval_option_dist = np.zeros(self.network.n_options)
 
+    # def take_step(self, mode='train'):
+    #     if mode == 'explore':
+    #         action = self.env.action_space.sample()
+    #     else:
+    #         s_0_stacked = np.stack([self.state_buffer])
+    #         action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
+    #         self.step_count += 1
+    #     s_1_raw, r_raw, done, _ = self.env.step(action)
+    #     s_1 = preprocess(s_1_raw)
+    #     self.rewards += r_raw
+    #     self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
+    #     self.state_buffer.append(self.s_0.copy())
+    #     self.next_state_buffer.append(s_1.copy())
+    #     self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
+
+    #     self.s_0 = s_1.copy()
+    #     return done
+
     def take_step(self, mode='train'):
+        r_raw = 0
+        state_buffer = deepcopy(self.state_buffer)
         if mode == 'explore':
             action = self.env.action_space.sample()
         else:
-            s_0_stacked = np.stack([self.state_buffer])
-            action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
+            action = self.network.get_action(np.stack([self.state_buffer]), epsilon=self.epsilon)
             self.step_count += 1
-        s_1_raw, r_raw, done, _ = self.env.step(action)
-        s_1 = preprocess(s_1_raw)
+        for i in range(self.skip_frames):
+            self.state_buffer.append(self.s_0)
+            s_1_raw_i, r_raw_i, done, _ = self.env.step(action)
+            s_1_i = preprocess(s_1_raw_i)        
+            self.next_state_buffer.append(s_1_i.copy())
+            self.s_0 = s_1_i.copy()
+            r_raw = max(r_raw, r_raw_i) # give max reward of 4 frames
+            if done:
+                break
+        
         self.rewards += r_raw
         self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
-        self.state_buffer.append(self.s_0.copy())
-        self.next_state_buffer.append(s_1.copy())
-        self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
+        self.option_buffer.append(state_buffer, action, r_raw, done, deepcopy(self.next_state_buffer))
 
-        self.s_0 = s_1.copy()
         return done
 
     def take_option(self, mode='train'):
@@ -108,6 +133,7 @@ class HDQN_agent:
               network_save_frequency=100, network_evaluate_frequency=100,
               n_val_episodes=10, start_from_eps=0, checkpoint_path=None, 
               checkpoint_prefix="hdqn", plot_result=False, 
+              epsilon_start=None, epsilon_end=None, epsilon_final_episode=None,
               op_ratio_n_bins=50, meta_burn_in_ep=0,):
         self.checkpoint_path = checkpoint_path
         self.checkpoint_prefix = checkpoint_prefix
@@ -118,6 +144,11 @@ class HDQN_agent:
         self.meta_network_update_frequency = network_update_frequency*self.option_len
         self.op_ratio_window = max(round((max_episodes-start_from_eps)/op_ratio_n_bins),1)
         self.meta_burn_in_ep = meta_burn_in_ep
+
+        # Annealing
+        if not (epsilon_start is None or epsilon_end is None or epsilon_final_episode is None):
+            self.epsilon = epsilon_start
+            eps_incr = (epsilon_end-epsilon_start)/epsilon_final_episode
 
         # Here it is possible to start from nonzero episode (see DQN_agent.py)
 
@@ -156,12 +187,14 @@ class HDQN_agent:
                 done = self.take_step(mode='train')
 
                 # Update options networks
-                if self.step_count % self.options_network_update_frequency == 0:
+                if self.step_count % (self.options_network_update_frequency+1) == 0:
+                    # update all heads at the same rate
                     self.update(network='options')
-
-                # Update meta network
-                if self.step_count % self.meta_network_update_frequency == 0:
                     self.update(network='meta')
+
+                # # Update meta network
+                # if self.step_count % self.meta_network_update_frequency == 0:
+                #     self.update(network='meta')
 
                 # Sync networks
                 if self.step_count % network_sync_frequency == 0:
@@ -191,7 +224,9 @@ class HDQN_agent:
                 for o in range(self.network.n_options):
                     self.train_ep_option_ratio[o][ep] = op_ratios[o]
                 self.train_ep_option_dist = np.zeros(self.network.n_options)
-        
+
+            if ep < epsilon_final_episode:
+                self.epsilon += eps_incr  # Anneal epsilon
             ep += 1
             txt = "\rEpisode {:d} Mean Rewards {:.2f}\t\t"
             print(txt.format(ep, mean_rewards), end="")

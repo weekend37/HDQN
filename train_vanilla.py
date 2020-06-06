@@ -27,16 +27,17 @@ print("Running on", device)
 CHECKPOINT_FOLDERNAME = "checkpoints/"
 CHECKPOINT_PREFIX="vanilla_dqn"
 MEMORY_SIZE = 1e4
+BATCH_SIZE = 32
 BURN_IN = 1e5
 LEARNING_RATE = 2.5e-4
 GAMMA = 0.99
 MAX_EPISODES = 5000
 EPSILON = 0.25
-# INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_FRAME=1e6
+INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_EPISODE=1e3
 NETWORK_SYNC_FREQ = 10000
 NETWORK_UPDATE_FREQ = 4
 NETWORK_SAVE_FREQ = 100
-NETWORK_EVALUATE_FREQ = 100
+NETWORK_EVALUATE_FREQ = 1000
 N_VAL_EPISODES = 10
 
 # Vanilla
@@ -51,12 +52,16 @@ dqn = DQN(
 agent = DQN_agent(env, dqn, D, epsilon=EPSILON)
 agent.train(
     gamma=GAMMA,
-    max_episodes=MAX_EPISODES,
+    max_episodes= MAX_EPISODES,
+    batch_size=BATCH_SIZE,
     network_update_frequency = NETWORK_UPDATE_FREQ,
     network_sync_frequency = NETWORK_SYNC_FREQ,
     network_save_frequency = NETWORK_SAVE_FREQ,
     network_evaluate_frequency=NETWORK_EVALUATE_FREQ,
     n_val_episodes=N_VAL_EPISODES,
     checkpoint_path = CHECKPOINT_FOLDERNAME,
-    checkpoint_prefix = CHECKPOINT_PREFIX
+    checkpoint_prefix = CHECKPOINT_PREFIX,
+    epsilon_start=INITIAL_EPSILON,
+    epsilon_end=FINAL_EPSILON,
+    epsilon_final_episode=FINAL_EPSILON_EPISODE
 )

@@ -20,6 +20,7 @@ class DQN_agent:
         self.batch_size = batch_size
         self.buffer = buffer
         self.window = 100
+        self.skip_frames = 4
         # network
         self.network = network
         self.target_network = deepcopy(network)
@@ -38,22 +39,44 @@ class DQN_agent:
         [self.state_buffer.append(np.zeros(self.s_0.shape)) for i in range(self.tau)]
         [self.next_state_buffer.append(np.zeros(self.s_0.shape)) for i in range(self.tau)]
 
+        # def take_step(self, mode='train'):
+        #     if mode == 'explore':
+        #         action = self.env.action_space.sample()
+        #     else:
+        #         s_0_stacked = np.stack([self.state_buffer])
+        #         action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
+        #         self.step_count += 1
+        #     s_1_raw, r_raw, done, _ = self.env.step(action)
+        #     s_1 = preprocess(s_1_raw)
+        #     self.rewards += r_raw
+        #     self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
+        #     self.state_buffer.append(self.s_0.copy())
+        #     self.next_state_buffer.append(s_1.copy())
+        #     self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
+        #     self.s_0 = s_1.copy()
+        #     return done
+
     def take_step(self, mode='train'):
+        r_raw = 0
+        state_buffer = deepcopy(self.state_buffer)
         if mode == 'explore':
             action = self.env.action_space.sample()
         else:
-            s_0_stacked = np.stack([self.state_buffer])
-            action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
+            action = self.network.get_action(np.stack([self.state_buffer]), epsilon=self.epsilon)
             self.step_count += 1
-        s_1_raw, r, done, _ = self.env.step(action)
-        r_filt = self.filter_reward(r)
-        s_1 = preprocess(s_1_raw)
-        self.rewards += r
-        self.state_buffer.append(self.s_0.copy())
-        self.next_state_buffer.append(s_1.copy())
-        self.buffer.append(deepcopy(self.state_buffer), action, r_filt, done, 
-                           deepcopy(self.next_state_buffer))
-        self.s_0 = s_1.copy()
+        for i in range(self.skip_frames):
+            self.state_buffer.append(self.s_0)
+            s_1_raw_i, r_raw_i, done, _ = self.env.step(action)
+            s_1_i = preprocess(s_1_raw_i)        
+            self.next_state_buffer.append(s_1_i.copy())
+            self.s_0 = s_1_i.copy()
+            r_raw = max(r_raw, r_raw_i) # give max reward of 4 frames
+            if done:
+                break
+    
+            self.rewards += r_raw
+            self.buffer.append(state_buffer, action, r_raw, done, deepcopy(self.next_state_buffer))
+
         return done
 
     # Implement DQN training algorithm
@@ -61,12 +84,18 @@ class DQN_agent:
               network_update_frequency=4, network_sync_frequency=2000,
               network_save_frequency=100, network_evaluate_frequency=100,
               n_val_episodes=10, start_from_eps=0, checkpoint_path=None, 
+              epsilon_start=None, epsilon_end=None, epsilon_final_episode=None,
               checkpoint_prefix="vanilla_dqn", plot_result=False):
         self.checkpoint_path = checkpoint_path
         self.checkpoint_prefix = checkpoint_prefix
         self.gamma = gamma
         self.network_evaluate_frequency = network_evaluate_frequency
         self.mean_validation_rewards = {} # possible to not reset 
+
+        # Annealing
+        if not (epsilon_start is None or epsilon_end is None or epsilon_final_episode is None):
+            self.epsilon = epsilon_start
+            eps_incr = (epsilon_end-epsilon_start)/epsilon_final_episode
 
         if start_from_eps > 0:
             pth = self.network.checkpoint_path+'checkpoint_'+str(start_from_eps)+'_eps.pth'
@@ -123,6 +152,9 @@ class DQN_agent:
                     txt = "\rEpisode {:d} Mean Rewards {:.2f}\t\t"
                     print(txt.format(ep, mean_rewards), end="")
 
+                    if ep < epsilon_final_episode:
+                        self.epsilon += eps_incr  # Anneal epsilon
+
                     # Terminate
                     if ep >= max_episodes:
                         print('\nEpisode limit reached.')
@@ -151,6 +183,7 @@ class DQN_agent:
         batch = self.buffer.sample_batch(batch_size=self.batch_size)
         loss = self.calculate_loss(batch)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
         self.network.optimizer.step()
         if self.network.device == 'cuda':
             self.losses.append(loss.detach().cpu().numpy())
