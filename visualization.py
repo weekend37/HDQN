@@ -43,7 +43,7 @@ def wrap_env(env, video=None):
 
 def play_with_network(env, network, option_len = 0, show_vid=True):
   options_taken = {}
-  display = Display(visible=0, size=(1400, 900))
+  display = Display(visible=0, size=(1600, 900))
   display.start()
   env = wrap_env(env)
   state_buffer = deque(maxlen=4) # init state buffer
@@ -81,11 +81,12 @@ def play_with_network(env, network, option_len = 0, show_vid=True):
     placeholder = np.ones(len(op))
     plt.bar(op_ep, placeholder, color=np.take(palette, op), align="edge", alpha=0.75, width=option_len)
     plt.xlabel("Frame")
-    plt.tick_params(axis='y',          # changes apply to the x-axis
-                    which='both',      # both major and minor ticks are affected
-                    bottom=False,      # ticks along the bottom edge are off
-                    top=False,         # ticks along the top edge are off
-                    labelbottom=False) #
+    plt.yticks([])
+    # plt.tick_params(axis='y',          # changes apply to the x-axis
+                    # which='both',      # both major and minor ticks are affected
+                    # bottom=False,      # ticks along the bottom edge are off
+                    # top=False,         # ticks along the top edge are off
+                    # labelbottom=False) #
     plt.show()
     
   return r, options_taken

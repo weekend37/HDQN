@@ -280,11 +280,8 @@ class HDQN_agent:
                 opt = self.network.current_option
             if (opt == 0) or (opt == 1 and r != 10) or (opt == 2 and r != 50) or (opt==3 and r <= 50):
                 r = 0
-            if opt == 0:
-              if done:
+            if opt == 0 and done:
                 r = -1
-              else:
-                r = .1
         if network == "meta" and done:
             r = -1
         return max(-1, min(1, r))

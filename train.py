@@ -42,7 +42,7 @@ OPTION_LEN = 50
 META_BURN_IN_EP = 0
 
 env = gym.make("MsPacman-v0")
-D = experienceReplayBuffer(memory_size=1e4)
+D = experienceReplayBuffer(memory_size=MEMORY_SIZE)
 hdqn = HDQN(
     env, 
     learning_rate = LEARNING_RATE,
