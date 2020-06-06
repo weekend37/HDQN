@@ -255,16 +255,19 @@ class HDQN_agent:
             else:
                 self.losses['meta'].append(loss.detach().numpy())
         elif network == "options":
+            losses = []
             for i in range(self.network.n_options):
                 batch = self.option_buffer.sample_batch(batch_size=self.batch_size)
-                loss = self.calculate_options_loss(batch, option=i)
-                # loss /= self.network.n_options # take average between options
-                loss.backward()
+                losses.append(self.calculate_options_loss(batch, option=i))
                 if self.network.device == 'cuda':
-                    self.losses[i].append(loss.detach().cpu().numpy())
+                    self.losses[i].append(losses[i].detach().cpu().numpy())
                 else:
-                    self.losses[i].append(loss.detach().numpy())
+                    self.losses[i].append(losses[i].detach().numpy())
                 
+            sum(losses).backward() # an average might also be possible
+                
+        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
+
         self.network.optimizer.step()
 
     def eval_performance(self, n_val_episodes, eps):
