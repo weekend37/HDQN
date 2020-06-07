@@ -27,10 +27,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Running on", device)
 
 CHECKPOINT_FOLDERNAME = "checkpoints/"
-CHECKPOINT_PREFIX="hdqn"
+CHECKPOINT_PREFIX="hdqn_sep"
 MEMORY_SIZE = 1e6 
 BURN_IN = 1e5
-LEARNING_RATE = 2.5e-6
+LEARNING_RATE = 2.5e-4
 GAMMA = 0.99
 MAX_EPISODES = 5000
 INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_EPISODE=1e3
