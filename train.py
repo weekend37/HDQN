@@ -16,6 +16,8 @@ from gym import logger as gymlogger
 # Local .py files
 from DQN_utils import *
 from HDQN import *
+from HDQN_2head import *
+from HDQN_sep import *
 from HDQN_agent import *
 from DQN import *
 from DQN_agent import *
