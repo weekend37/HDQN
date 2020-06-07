@@ -71,6 +71,7 @@ class HDQN_sep(nn.Module):
 
         # Set device for GPU's
         if self.device == 'cuda':
+            self.cnn.cuda()
             self.cnn_meta.cuda()
             self.fc_meta.cuda()
             [self.cnn_options[i].cuda() for i in range(n_options)]
