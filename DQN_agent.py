@@ -39,25 +39,8 @@ class DQN_agent:
         [self.state_buffer.append(np.zeros(self.s_0.shape)) for i in range(self.tau)]
         [self.next_state_buffer.append(np.zeros(self.s_0.shape)) for i in range(self.tau)]
 
-        # def take_step(self, mode='train'):
-        #     if mode == 'explore':
-        #         action = self.env.action_space.sample()
-        #     else:
-        #         s_0_stacked = np.stack([self.state_buffer])
-        #         action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
-        #         self.step_count += 1
-        #     s_1_raw, r_raw, done, _ = self.env.step(action)
-        #     s_1 = preprocess(s_1_raw)
-        #     self.rewards += r_raw
-        #     self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
-        #     self.state_buffer.append(self.s_0.copy())
-        #     self.next_state_buffer.append(s_1.copy())
-        #     self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
-        #     self.s_0 = s_1.copy()
-        #     return done
-
     def take_step(self, mode='train'):
-        r_raw = 0
+        r_reg = 0
         state_buffer = deepcopy(self.state_buffer)
         if mode == 'explore':
             action = self.env.action_space.sample()
@@ -66,16 +49,17 @@ class DQN_agent:
             self.step_count += 1
         for i in range(self.skip_frames):
             self.state_buffer.append(self.s_0)
-            s_1_raw_i, r_raw_i, done, _ = self.env.step(action)
+            s_1_raw_i, r_raw, done, _ = self.env.step(action)
+            self.rewards += r_raw
             s_1_i = preprocess(s_1_raw_i)        
             self.next_state_buffer.append(s_1_i.copy())
             self.s_0 = s_1_i.copy()
-            r_raw = max(r_raw, r_raw_i) # give max reward of 4 frames
+            r_reg = max(r_reg, r_raw) # give max reward of 4 frames
             if done:
                 break
     
-            self.rewards += r_raw
-            self.buffer.append(state_buffer, action, r_raw, done, deepcopy(self.next_state_buffer))
+        r = self.filter_reward(r_reg, done)
+        self.buffer.append(state_buffer, action, r, done, deepcopy(self.next_state_buffer))
 
         return done
 
@@ -183,7 +167,7 @@ class DQN_agent:
         batch = self.buffer.sample_batch(batch_size=self.batch_size)
         loss = self.calculate_loss(batch)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
+        nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
         self.network.optimizer.step()
         if self.network.device == 'cuda':
             self.losses.append(loss.detach().cpu().numpy())
@@ -191,6 +175,10 @@ class DQN_agent:
             self.losses.append(loss.detach().numpy())
     
     def filter_reward(self, r, done=False):
+        if done:
+            return -1
+        else:
+            return 0
         return max(-1,min(1, r))
 
     def eval_performance(self, n_val_episodes, eps):

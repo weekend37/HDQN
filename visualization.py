@@ -60,10 +60,13 @@ def play_with_network(env, network, option_len = 0, show_vid=True):
       network.current_option = option
       options_taken[i] = option
     action = network.get_action([state_buffer])
-    env.render()
-    state, reward, done, info = env.step(action) 
-    state_buffer.append(preprocess(state))
-    r += reward
+    for frame in range(4):
+      env.render()
+      state, reward, done, _ = env.step(action) 
+      state_buffer.append(preprocess(state))
+      r += reward
+      if done:
+        break
     i += 1
               
   env.close()

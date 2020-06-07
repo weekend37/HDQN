@@ -44,7 +44,6 @@ class HDQN_agent:
         self.meta_buffer = buffer
         self.option_buffer = deepcopy(buffer)
         self.meta_buffer.burn_in = batch_size
-
         # analysis
         self.train_ep_option_dist = np.zeros(self.network.n_options)
         self.train_ep_option_ratio = {}
@@ -52,26 +51,8 @@ class HDQN_agent:
             self.train_ep_option_ratio[o] = {}
         self.eval_option_dist = np.zeros(self.network.n_options)
 
-    # def take_step(self, mode='train'):
-    #     if mode == 'explore':
-    #         action = self.env.action_space.sample()
-    #     else:
-    #         s_0_stacked = np.stack([self.state_buffer])
-    #         action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
-    #         self.step_count += 1
-    #     s_1_raw, r_raw, done, _ = self.env.step(action)
-    #     s_1 = preprocess(s_1_raw)
-    #     self.rewards += r_raw
-    #     self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
-    #     self.state_buffer.append(self.s_0.copy())
-    #     self.next_state_buffer.append(s_1.copy())
-    #     self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
-
-    #     self.s_0 = s_1.copy()
-    #     return done
-
     def take_step(self, mode='train'):
-        r_raw = 0
+        r_reg = 0
         state_buffer = deepcopy(self.state_buffer)
         if mode == 'explore':
             action = self.env.action_space.sample()
@@ -81,16 +62,16 @@ class HDQN_agent:
         for i in range(self.skip_frames):
             self.state_buffer.append(self.s_0)
             s_1_raw_i, r_raw_i, done, _ = self.env.step(action)
+            self.rewards += r_raw_i
             s_1_i = preprocess(s_1_raw_i)        
             self.next_state_buffer.append(s_1_i.copy())
             self.s_0 = s_1_i.copy()
-            r_raw = max(r_raw, r_raw_i) # give max reward of 4 frames
+            r_reg = max(r_reg, r_raw_i) # register max reward of the 4 skipped frames
             if done:
                 break
         
-        self.rewards += r_raw
-        self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
-        self.option_buffer.append(state_buffer, action, r_raw, done, deepcopy(self.next_state_buffer))
+        self.meta_rewards += self.filter_reward(r_reg, done, network="meta")
+        self.option_buffer.append(state_buffer, action, r_reg, done, deepcopy(self.next_state_buffer))
 
         return done
 
@@ -98,16 +79,14 @@ class HDQN_agent:
         
         # Observe outcome
         done = False
-        s_1 = np.stack([deepcopy(self.state_buffer)])
+        meta_next_state = np.stack([deepcopy(self.state_buffer)])
         self.meta_rewards /= self.option_len  # scale down to ~ [-1,1]
         self.meta_rewards = max(min(self.meta_rewards,1),-1) # truncate to [-1,1]
-        self.meta_buffer.append(deepcopy(self.meta_state),
-                                self.network.current_option,
-                                self.meta_rewards, done, s_1)
+        self.meta_buffer.append(deepcopy(self.meta_state), self.network.current_option, self.meta_rewards, done, meta_next_state)
 
         # Reset meta rewards and set next state
         self.meta_rewards = 0        
-        self.meta_state = s_1
+        self.meta_state = meta_next_state
 
         # Take next option
         if mode == 'explore':
@@ -134,7 +113,7 @@ class HDQN_agent:
               n_val_episodes=10, start_from_eps=0, checkpoint_path=None, 
               checkpoint_prefix="hdqn", plot_result=False, 
               epsilon_start=None, epsilon_end=None, epsilon_final_episode=None,
-              op_ratio_n_bins=50, meta_burn_in_ep=0):
+              op_ratio_n_bins=100, meta_burn_in_ep=0, average_option_losses=False):
         self.checkpoint_path = checkpoint_path
         self.checkpoint_prefix = checkpoint_prefix
         self.gamma = gamma
@@ -144,6 +123,7 @@ class HDQN_agent:
         self.meta_network_update_frequency = network_update_frequency*self.option_len
         self.op_ratio_window = max(round((max_episodes-start_from_eps)/op_ratio_n_bins),1)
         self.meta_burn_in_ep = meta_burn_in_ep
+        self.average_option_losses = average_option_losses
 
         # Annealing
         if not (epsilon_start is None or epsilon_end is None or epsilon_final_episode is None):
@@ -180,21 +160,19 @@ class HDQN_agent:
 
             # Play a game
             while not done:
-
+                
+                # Take next option
                 if self.step_count % self.option_len == 0:
-                    self.take_option(mode=meta_mode) # Take next option
+                    self.take_option(mode=meta_mode) 
 
+                # Take next action
                 done = self.take_step(mode='train')
 
                 # Update options networks
                 if self.step_count % (self.options_network_update_frequency+1) == 0:
-                    # update all heads at the same rate
+                    # update all networks at the same rate
                     self.update(network='options')
                     self.update(network='meta')
-
-                # # Update meta network
-                # if self.step_count % self.meta_network_update_frequency == 0:
-                #     self.update(network='meta')
 
                 # Sync networks
                 if self.step_count % network_sync_frequency == 0:
@@ -206,7 +184,7 @@ class HDQN_agent:
                 self.eval_performance(n_val_episodes, ep)
 
             # Save networks and learning curves
-            if ep != 0 and ep % network_save_frequency == 0:
+            if (ep+1) % network_save_frequency == 0:
                 # network
                 filename = 'checkpoint_'+str(ep)+'_eps.pth'
                 if self.checkpoint_prefix != "":
@@ -224,13 +202,15 @@ class HDQN_agent:
                 for o in range(self.network.n_options):
                     self.train_ep_option_ratio[o][ep] = op_ratios[o]
                 self.train_ep_option_dist = np.zeros(self.network.n_options)
-
-            if ep < epsilon_final_episode:
-                self.epsilon += eps_incr  # Anneal epsilon
             ep += 1
             txt = "\rEpisode {:d} Mean Rewards {:.2f}\t\t"
             print(txt.format(ep, mean_rewards), end="")
+
+            # Anneal epsilon
+            if ep <= epsilon_final_episode:
+                self.epsilon += eps_incr 
             
+            # Wrap it up
             if ep >= max_episodes:
                 print('\nEpisode limit reached.')
                 if plot_result:
@@ -278,13 +258,11 @@ class HDQN_agent:
 
     def update(self, network="options"):
 
-        self.network.optimizer.zero_grad()
-        
         # losses
+        self.network.optimizer.zero_grad()
         if network == "meta":
             batch = self.meta_buffer.sample_batch(batch_size=self.batch_size)
             loss = self.calculate_meta_loss(batch)
-            loss.backward()
             if self.network.device == 'cuda':
                 self.losses['meta'].append(loss.detach().cpu().numpy())
             else:
@@ -298,11 +276,14 @@ class HDQN_agent:
                     self.losses[i].append(losses[i].detach().cpu().numpy())
                 else:
                     self.losses[i].append(losses[i].detach().numpy())
-                
-            sum(losses).backward() # an average might also be possible
-                
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
+                    
+            loss = sum(losses)
+            if self.average_option_losses:
+                loss /= self.network.n_options
 
+        # Backprop
+        loss.backward() 
+        nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
         self.network.optimizer.step()
 
     def eval_performance(self, n_val_episodes, eps):
@@ -320,8 +301,7 @@ class HDQN_agent:
                 r = 0
             if opt == 0 and done:
                 r = -1
-        if network == "meta" and done:
-            r = -1
+
         return max(-1, min(1, r))
           
     def play_a_game(self):
