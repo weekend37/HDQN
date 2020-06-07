@@ -52,24 +52,6 @@ class HDQN_agent:
             self.train_ep_option_ratio[o] = {}
         self.eval_option_dist = np.zeros(self.network.n_options)
 
-    # def take_step(self, mode='train'):
-    #     if mode == 'explore':
-    #         action = self.env.action_space.sample()
-    #     else:
-    #         s_0_stacked = np.stack([self.state_buffer])
-    #         action = self.network.get_action(s_0_stacked, epsilon=self.epsilon)
-    #         self.step_count += 1
-    #     s_1_raw, r_raw, done, _ = self.env.step(action)
-    #     s_1 = preprocess(s_1_raw)
-    #     self.rewards += r_raw
-    #     self.meta_rewards += self.filter_reward(r_raw, done, network="meta")
-    #     self.state_buffer.append(self.s_0.copy())
-    #     self.next_state_buffer.append(s_1.copy())
-    #     self.option_buffer.append(deepcopy(self.state_buffer), action, r_raw, done, deepcopy(self.next_state_buffer))
-
-    #     self.s_0 = s_1.copy()
-    #     return done
-
     def take_step(self, mode='train'):
         r_raw = 0
         state_buffer = deepcopy(self.state_buffer)
@@ -101,9 +83,7 @@ class HDQN_agent:
         s_1 = np.stack([deepcopy(self.state_buffer)])
         self.meta_rewards /= self.option_len  # scale down to ~ [-1,1]
         self.meta_rewards = max(min(self.meta_rewards,1),-1) # truncate to [-1,1]
-        self.meta_buffer.append(deepcopy(self.meta_state),
-                                self.network.current_option,
-                                self.meta_rewards, done, s_1)
+        self.meta_buffer.append(deepcopy(self.meta_state), self.network.current_option, self.meta_rewards, done, s_1)
 
         # Reset meta rewards and set next state
         self.meta_rewards = 0        
