@@ -31,25 +31,24 @@ BURN_IN = 1e5
 LEARNING_RATE = 2.5e-6
 GAMMA = 0.99
 MAX_EPISODES = 5000
-EPSILON = 0.25
-INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_FRAME=1e6
+INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_EPISODE=1e3
 NETWORK_SYNC_FREQ = 10000
 NETWORK_UPDATE_FREQ = 4
 NETWORK_SAVE_FREQ = 100
-NETWORK_EVALUATE_FREQ = 100
+NETWORK_EVALUATE_FREQ = 1000
 N_VAL_EPISODES = 10
-OPTION_LEN = 50
-META_BURN_IN_EP = 0
+OPTION_LEN = 10
+META_BURN_IN_EP = 500
 
 env = gym.make("MsPacman-v0")
 D = experienceReplayBuffer(memory_size=MEMORY_SIZE)
-hdqn = HDQN(
+hdqn = HDQN_sep(
     env, 
     learning_rate = LEARNING_RATE,
     device = device, 
     checkpoint_path = CHECKPOINT_FOLDERNAME
 )
-agent = HDQN_agent(env, hdqn, D, epsilon=EPSILON, option_len=OPTION_LEN)
+agent = HDQN_agent(env, hdqn, D, option_len=OPTION_LEN)
 agent.train(
     gamma=GAMMA,
     max_episodes=MAX_EPISODES,

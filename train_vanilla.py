@@ -32,7 +32,6 @@ BURN_IN = 1e5
 LEARNING_RATE = 2.5e-4
 GAMMA = 0.99
 MAX_EPISODES = 5000
-EPSILON = 0.25
 INITIAL_EPSILON = 1; FINAL_EPSILON=0.1; FINAL_EPSILON_EPISODE=1e3
 NETWORK_SYNC_FREQ = 10000
 NETWORK_UPDATE_FREQ = 4
@@ -49,7 +48,7 @@ dqn = DQN(
     device=device, 
     checkpoint_path=CHECKPOINT_FOLDERNAME
 )
-agent = DQN_agent(env, dqn, D, epsilon=EPSILON)
+agent = DQN_agent(env, dqn, D)
 agent.train(
     gamma=GAMMA,
     max_episodes= MAX_EPISODES,
