@@ -22,7 +22,7 @@ class HDQN(nn.Module):
         self.n_outputs = env.action_space.n
         self.clip_val = 10
         # HDQN
-        self.n_options = 4
+        self.n_options = n_options
         self.current_option = 0
 
         # CNN model from Mnih et al.
