@@ -167,7 +167,7 @@ class DQN_agent:
         batch = self.buffer.sample_batch(batch_size=self.batch_size)
         loss = self.calculate_loss(batch)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
+        nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
         self.network.optimizer.step()
         if self.network.device == 'cuda':
             self.losses.append(loss.detach().cpu().numpy())

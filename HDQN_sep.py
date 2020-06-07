@@ -26,10 +26,14 @@ class HDQN_sep(nn.Module):
         self.n_options = 4
         self.current_option = 0
 
+        # share first layer (to connect the graphs) 
+        self.cnn = nn.Sequential(
+          nn.Conv2d(self.tau, 32, kernel_size=8, stride=4),
+          nn.ReLU()
+        )
+
         # CNN Meta
         self.cnn_meta = nn.Sequential(
-          nn.Conv2d(self.tau, 32, kernel_size=8, stride=4),
-          nn.ReLU(),
           nn.Conv2d(32, 64, kernel_size=4, stride=2),
           nn.ReLU(),
           nn.Conv2d(64, 64, kernel_size=3, stride=1),
@@ -40,17 +44,16 @@ class HDQN_sep(nn.Module):
         self.cnn_options = {}
         for i in range(n_options):
             self.cnn_options[i] = nn.Sequential(
-                nn.Conv2d(self.tau, 32, kernel_size=8, stride=4),
-                nn.ReLU(),
                 nn.Conv2d(32, 64, kernel_size=4, stride=2),
                 nn.ReLU(),
                 nn.Conv2d(64, 64, kernel_size=3, stride=1),
                 nn.ReLU()
             )
         
-        self.fc_layer_inputs = self.out_dim(model=self.cnn_meta, input_dim=input_dim)
-
         # Fully connected layers        
+        self.fc_layer_inputs = self.out_dim(input_dim=input_dim)
+        
+        # meta
         self.fc_meta = nn.Sequential(
           nn.Linear(self.fc_layer_inputs, 512, bias=True),
           nn.ReLU(),
@@ -85,7 +88,8 @@ class HDQN_sep(nn.Module):
 
     def get_ovals(self, state):
         state_t = torch.FloatTensor(state).to(device=self.device)
-        cnn_out = self.cnn_meta(state_t).reshape(-1, self.fc_layer_inputs)
+        shared_cnn_out = self.cnn(state_t)
+        cnn_out = self.cnn_meta(shared_cnn_out).reshape(-1, self.fc_layer_inputs)
         meta_out = self.fc_meta(cnn_out)
         return meta_out
 
@@ -104,14 +108,15 @@ class HDQN_sep(nn.Module):
       
     def get_qvals(self, state):
         state_t = torch.FloatTensor(np.stack(state)).to(device=self.device)
-        cnn_out = self.cnn_options[self.current_option](state_t).reshape(-1, self.fc_layer_inputs)
+        shared_cnn_out = self.cnn(state_t)
+        cnn_out = self.cnn_options[self.current_option](shared_cnn_out).reshape(-1, self.fc_layer_inputs)
         qvals = self.fc_options[self.current_option](cnn_out)
         return qvals
 
     # misc ----------------------------------------------------------------
 
-    def out_dim(self, model, input_dim):
-        return model(torch.zeros(1, self.tau, *input_dim)).flatten().shape[0]
+    def out_dim(self, input_dim):
+        return self.cnn_meta(self.cnn(torch.zeros(1, self.tau, *input_dim))).flatten().shape[0]
 
     def save_weights(self, filename='checkpoint.pth'):
         path = self.checkpoint_path+filename 

@@ -283,7 +283,7 @@ class HDQN_agent:
 
         # Backprop
         loss.backward() 
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
+        nn.utils.clip_grad_norm_(self.network.parameters(), self.network.clip_val)
         self.network.optimizer.step()
 
     def eval_performance(self, n_val_episodes, eps):
